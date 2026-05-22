@@ -1,5 +1,5 @@
-import { createSimpleContext } from "@opencode-ai/ui/context"
-import { checksum } from "@opencode-ai/core/util/encode"
+import { createSimpleContext } from "@jarvis-ai/ui/context"
+import { checksum } from "@jarvis-ai/core/util/encode"
 import { useParams } from "@solidjs/router"
 import { batch, createMemo, createRoot, getOwner, onCleanup } from "solid-js"
 import { createStore, type SetStoreFunction } from "solid-js/store"

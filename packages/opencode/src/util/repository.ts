@@ -1,6 +1,6 @@
 import path from "path"
 import { fileURLToPath } from "url"
-import { Global } from "@opencode-ai/core/global"
+import { Global } from "@jarvis-ai/core/global"
 
 type BaseReference = {
   host: string

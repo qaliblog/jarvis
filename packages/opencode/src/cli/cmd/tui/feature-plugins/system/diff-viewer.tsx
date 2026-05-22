@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
-import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
-import type { SnapshotFileDiff, VcsFileDiff } from "@opencode-ai/sdk/v2"
+import type { TuiPlugin, TuiPluginApi } from "@jarvis-ai/plugin/tui"
+import type { SnapshotFileDiff, VcsFileDiff } from "@jarvis-ai/sdk/v2"
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { LANGUAGE_EXTENSIONS } from "@/lsp/language"
 import { useBindings, useCommandShortcut } from "@tui/keymap"
