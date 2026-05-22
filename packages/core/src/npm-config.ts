@@ -34,6 +34,11 @@ export const load = (dir: string) =>
 export const registry = (dir: string) =>
   load(dir).pipe(
     Effect.map((config) => {
+      const OFFLINE_MODE = process.env.OP_OFFLINE_MODE === "true"
+      if (OFFLINE_MODE) {
+        return "file:///dev/null" // Dummy registry for offline mode
+      }
+      
       const registry = typeof config.registry === "string" ? config.registry : "https://registry.npmjs.org"
       return registry.endsWith("/") ? registry.slice(0, -1) : registry
     }),

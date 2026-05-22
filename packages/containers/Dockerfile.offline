@@ -1,0 +1,84 @@
+# Multi-stage build for OpenCode Offline
+FROM oven/bun:1.2.4-debian AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json bun.lock ./
+COPY packages/opencode/package.json ./packages/opencode/
+COPY packages/core/package.json ./packages/core/
+COPY packages/app/package.json ./packages/app/
+COPY packages/llm/package.json ./packages/llm/
+
+# Install dependencies
+RUN bun install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Apply offline patches
+RUN ./scripts/setup-offline-mode.sh && \
+    ./scripts/download-offline-resources.sh && \
+    bun run ./scripts/patch-parsers-offline.js
+
+# Build OpenCode with offline mode enabled
+ENV OP_OFFLINE_MODE=true
+ENV OP_DISABLE_EXTERNAL_CONNECTIONS=true
+ENV OP_LOCAL_WASM_FILES=true
+ENV OP_DISABLE_UPDATE_CHECKING=true
+ENV OP_DISABLE_TELEMETRY=true
+
+RUN cd packages/opencode && \
+    bun run build
+
+# Runtime stage
+FROM oven/bun:1.2.4-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy built application and offline resources
+COPY --from=builder /app/packages/opencode/dist ./dist
+COPY --from=builder /app/local-resources ./local-resources
+COPY --from=builder /app/scripts/opencode-offline.sh ./opencode.sh
+
+# Copy configuration
+COPY --from=builder /app/.env.offline ./.env.example
+
+# Create workspace directory
+RUN mkdir -p /workspace
+
+# Environment variables for offline mode
+ENV OP_OFFLINE_MODE=true
+ENV OP_DISABLE_EXTERNAL_CONNECTIONS=true
+ENV OP_LOCAL_WASM_FILES=true
+ENV OP_DISABLE_UPDATE_CHECKING=true
+ENV OP_DISABLE_TELEMETRY=true
+ENV OP_WORKSPACE=/workspace
+ENV OP_CONFIG_DIR=/config
+
+# Create non-root user
+RUN groupadd -r opencode && \
+    useradd -r -g opencode -d /app -s /bin/bash opencode && \
+    chown -R opencode:opencode /app /workspace
+
+USER opencode
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Expose port
+EXPOSE 3000
+
+# Entrypoint
+ENTRYPOINT ["/app/opencode.sh"]
+CMD ["serve", "--host", "0.0.0.0", "--port", "3000"]

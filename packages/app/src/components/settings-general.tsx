@@ -123,6 +123,18 @@ export const SettingsGeneral: Component = () => {
 
   const check = () => {
     if (!platform.checkUpdate) return
+    
+    const OFFLINE_MODE = import.meta.env.OP_OFFLINE_MODE === "true" || process.env.OP_OFFLINE_MODE === "true"
+    if (OFFLINE_MODE) {
+      showToast({
+        variant: "warning",
+        icon: "wifi-off",
+        title: language.t("settings.updates.toast.offline.title"),
+        description: language.t("settings.updates.toast.offline.description"),
+      })
+      return
+    }
+    
     setStore("checking", true)
 
     void platform

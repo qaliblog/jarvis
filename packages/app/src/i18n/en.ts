@@ -463,6 +463,8 @@ export const dict = {
   "toast.update.description": "A new version of OpenCode ({{version}}) is now available to install.",
   "toast.update.action.installRestart": "Install and restart",
   "toast.update.action.notYet": "Not yet",
+  "settings.updates.toast.offline.title": "Offline mode",
+  "settings.updates.toast.offline.description": "Update checking is disabled in offline mode.",
 
   "error.page.title": "Something went wrong",
   "error.page.description": "An error occurred while loading the application.",

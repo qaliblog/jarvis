@@ -32,20 +32,27 @@ const CHANNEL = await (async () => {
 const IS_PREVIEW = CHANNEL !== "latest"
 
 const VERSION = await (async () => {
-  if (env.OPENCODE_VERSION) return env.OPENCODE_VERSION
-  if (IS_PREVIEW) return `0.0.0-${CHANNEL}-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`
-  const version = await fetch("https://registry.npmjs.org/opencode-ai/latest")
-    .then((res) => {
-      if (!res.ok) throw new Error(res.statusText)
-      return res.json()
-    })
-    .then((data: any) => data.version)
-  const [major, minor, patch] = version.split(".").map((x: string) => Number(x) || 0)
-  const t = env.OPENCODE_BUMP?.toLowerCase()
-  if (t === "major") return `${major + 1}.0.0`
-  if (t === "minor") return `${major}.${minor + 1}.0`
-  return `${major}.${minor}.${patch + 1}`
-})()
+    if (env.OPENCODE_VERSION) return env.OPENCODE_VERSION
+    if (IS_PREVIEW) return `0.0.0-${CHANNEL}-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`
+    
+    const OFFLINE_MODE = process.env.OP_OFFLINE_MODE === "true"
+    if (OFFLINE_MODE) {
+      console.warn("Offline mode: Using fallback version 1.0.0 (npm registry check disabled)")
+      return "1.0.0"
+    }
+    
+    const version = await fetch("https://registry.npmjs.org/opencode-ai/latest")
+      .then((res) => {
+        if (!res.ok) throw new Error(res.statusText)
+        return res.json()
+      })
+      .then((data: any) => data.version)
+    const [major, minor, patch] = version.split(".").map((x: string) => Number(x) || 0)
+    const t = env.OPENCODE_BUMP?.toLowerCase()
+    if (t === "major") return `${major + 1}.0.0`
+    if (t === "minor") return `${major}.${minor + 1}.0`
+    return `${major}.${minor}.${patch + 1}`
+  })()
 
 const bot = ["actions-user", "opencode", "opencode-agent[bot]"]
 const teamPath = path.resolve(import.meta.dir, "../../../.github/TEAM_MEMBERS")

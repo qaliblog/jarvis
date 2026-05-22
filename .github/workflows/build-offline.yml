@@ -1,0 +1,409 @@
+name: Build Offline Binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0-offline)'
+        required: true
+        default: 'v1.0.0-offline'
+      include_wasm:
+        description: 'Include tree-sitter WASM files'
+        required: true
+        type: boolean
+        default: true
+      include_kotlin_lsp:
+        description: 'Include Kotlin LSP'
+        required: true
+        type: boolean
+        default: true
+  push:
+    tags:
+      - 'v*-offline*'
+    branches:
+      - 'release/offline*'
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+  OFFLINE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+  BUILD_CACHE_KEY: ${{ github.run_id }}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      offline_resources_sha: ${{ steps.hash.outputs.hash }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Generate hash for offline resources
+        id: hash
+        run: |
+          find ./scripts -name "*.sh" -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1 > /tmp/offline_hash
+          echo "hash=$(cat /tmp/offline_hash)" >> $GITHUB_OUTPUT
+
+      - name: Setup offline mode
+        run: ./scripts/setup-offline-mode.sh
+
+      - name: Cache offline resources
+        id: cache-resources
+        uses: actions/cache@v4
+        with:
+          path: ./local-resources
+          key: offline-resources-${{ steps.hash.outputs.hash }}
+          restore-keys: |
+            offline-resources-
+
+  build-matrix:
+    needs: setup
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            target: linux-x64
+            binary_name: opencode-offline-linux-x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            target: linux-arm64
+            binary_name: opencode-offline-linux-arm64
+          - os: macos-latest
+            platform: darwin
+            arch: x64
+            target: darwin-x64
+            binary_name: opencode-offline-macos-x64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            target: darwin-arm64
+            binary_name: opencode-offline-macos-arm64
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            target: win32-x64
+            binary_name: opencode-offline-windows-x64.exe
+          - os: windows-latest
+            platform: win32
+            arch: arm64
+            target: win32-arm64
+            binary_name: opencode-offline-windows-arm64.exe
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Install packaging tools
+        if: runner.os != 'Windows'
+        run: |
+          if command -v apt-get &> /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y zip
+          elif command -v yum &> /dev/null; then
+            sudo yum install -y zip
+          elif command -v brew &> /dev/null; then
+            brew install zip
+          fi
+          
+      - name: Install packaging tools (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # Windows has built-in zip support via PowerShell
+          echo "Windows has built-in compression tools"
+
+      - name: Restore offline resources
+        uses: actions/cache/restore@v4
+        with:
+          path: ./local-resources
+          key: offline-resources-${{ needs.setup.outputs.offline_resources_sha }}
+
+      - name: Download offline resources if needed
+        if: ${{ github.event.inputs.include_wasm == 'true' && !env.ACT }}
+        run: |
+          if [ ! -d "./local-resources/parsers" ] || [ -z "$(ls -A ./local-resources/parsers)" ]; then
+            echo "Downloading offline resources..."
+            ./scripts/download-offline-resources.sh
+          else
+            echo "Offline resources already downloaded"
+          fi
+
+      - name: Apply offline patches
+        run: |
+          # Apply parser configuration for offline mode
+          if [ -f "./scripts/patch-parsers-offline.js" ]; then
+            bun run ./scripts/patch-parsers-offline.js
+          fi
+          
+          # Set offline mode environment
+          export OP_OFFLINE_MODE=true
+          export OP_DISABLE_EXTERNAL_CONNECTIONS=true
+          export OP_LOCAL_WASM_FILES=true
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build OpenCode
+        env:
+          OP_OFFLINE_MODE: true
+          OP_DISABLE_EXTERNAL_CONNECTIONS: true
+          OP_LOCAL_WASM_FILES: true
+          OP_DISABLE_UPDATE_CHECKING: true
+          OP_DISABLE_TELEMETRY: true
+          TARGET_PLATFORM: ${{ matrix.platform }}
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          echo "Building for ${{ matrix.target }}"
+          
+          # Type check
+          bun typecheck
+          
+          # Build the package
+          cd packages/opencode
+          bun run build -- --target=${{ matrix.target }}
+          
+          # Create binary output directory
+          mkdir -p ../../dist/${{ matrix.target }}
+
+      - name: Package CLI binary
+        env:
+          BINARY_NAME: ${{ matrix.binary_name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          echo "Packaging $BINARY_NAME for $TARGET"
+          
+          # Create distribution directory
+          mkdir -p dist/$TARGET/opencode-offline
+          
+          # Copy built files
+          cp -r packages/opencode/dist/* dist/$TARGET/opencode-offline/
+          
+          # Copy offline resources if enabled
+          if [ "${{ github.event.inputs.include_wasm }}" = "true" ]; then
+            cp -r local-resources/* dist/$TARGET/opencode-offline/
+          fi
+          
+          # Create entry point script
+          if [ "${{ matrix.platform }}" = "win32" ]; then
+            cat > dist/$TARGET/opencode-offline/opencode.cmd << 'EOF'
+@echo off
+set OP_OFFLINE_MODE=true
+set OP_DISABLE_EXTERNAL_CONNECTIONS=true
+set OP_LOCAL_WASM_FILES=true
+set OP_DISABLE_UPDATE_CHECKING=true
+set OP_DISABLE_TELEMETRY=true
+node "%~dp0\index.js" %*
+EOF
+            # Create README for Windows
+            cat > dist/$TARGET/opencode-offline/README.txt << 'EOF'
+OpenCode Offline - Windows
+
+Usage:
+1. Configure LLM endpoints in .env file:
+   OPENAI_API_BASE=http://your-local-proxy/v1
+   ANTHROPIC_API_BASE=http://your-local-proxy/v1
+   GROQ_API_BASE=http://your-local-proxy/v1
+   DEEPSEEK_API_BASE=http://your-local-proxy/v1
+
+2. Run: opencode.cmd
+
+Features:
+- Fully offline operation
+- No external network calls
+- Local parser files
+- Custom LLM endpoints
+EOF
+            # Create zip archive
+            cd dist/$TARGET
+            zip -r $BINARY_NAME.zip opencode-offline/*
+          else
+            cat > dist/$TARGET/opencode-offline/opencode.sh << 'EOF'
+#!/bin/bash
+export OP_OFFLINE_MODE=true
+export OP_DISABLE_EXTERNAL_CONNECTIONS=true
+export OP_LOCAL_WASM_FILES=true
+export OP_DISABLE_UPDATE_CHECKING=true
+export OP_DISABLE_TELEMETRY=true
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+node "$DIR/index.js" "$@"
+EOF
+            chmod +x dist/$TARGET/opencode-offline/opencode.sh
+            
+            # Create README for Unix
+            cat > dist/$TARGET/opencode-offline/README.md << 'EOF'
+# OpenCode Offline
+
+## Usage:
+1. Configure LLM endpoints in .env file:
+   ```
+   OPENAI_API_BASE=http://your-local-proxy/v1
+   ANTHROPIC_API_BASE=http://your-local-proxy/v1
+   GROQ_API_BASE=http://your-local-proxy/v1
+   DEEPSEEK_API_BASE=http://your-local-proxy/v1
+   ```
+
+2. Run: `./opencode.sh`
+
+## Features:
+- Fully offline operation
+- No external network calls
+- Local parser files
+- Custom LLM endpoints
+- No telemetry or update checking
+EOF
+            
+            # Create tar.gz archive for Unix (better compression)
+            cd dist/$TARGET
+            tar -czf $BINARY_NAME.tar.gz opencode-offline/*
+          fi
+          
+          echo "Binary created: dist/$TARGET/$BINARY_NAME"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-offline-${{ matrix.target }}
+          path: dist/${{ matrix.target }}/
+          retention-days: 7
+
+  create-release:
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: opencode-offline-*
+          merge-multiple: true
+
+      - name: Create checksums
+        run: |
+          cd artifacts
+          # Find all binary files
+          find . -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.exe" \) | while read file; do
+            echo "Creating checksum for: $file"
+            sha256sum "$file" > "$file.sha256"
+          done
+          
+          # List all files
+          echo "Artifacts:"
+          find . -type f | sort
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.OFFLINE_VERSION }}
+          name: OpenCode Offline ${{ env.OFFLINE_VERSION }}
+          body: |
+            # OpenCode Offline Binaries
+            
+            ## Version: ${{ env.OFFLINE_VERSION }}
+            ## Build Date: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+            
+            ### Features:
+            - 🔒 Fully offline operation
+            - 🚫 No external connections except configured API endpoints
+            - 📦 Includes tree-sitter WASM files
+            - ⚡ CLI binaries for all platforms
+            - 🛡️ Privacy-focused
+            
+            ### Included Platforms:
+            - Linux x64
+            - Linux ARM64
+            - macOS x64
+            - macOS ARM64
+            - Windows x64
+            - Windows ARM64
+            
+            ### Usage:
+            1. Extract the archive for your platform
+            2. Configure LLM endpoints in `.env` file:
+               ```
+               OPENAI_API_BASE=http://your-local-proxy/v1
+               ANTHROPIC_API_BASE=http://your-local-proxy/v1
+               GROQ_API_BASE=http://your-local-proxy/v1
+               DEEPSEEK_API_BASE=http://your-local-proxy/v1
+               ```
+            3. Run: `./opencode.sh` (Linux/macOS) or `opencode.cmd` (Windows)
+            
+            ### Offline Mode Features:
+            - No GitHub API calls
+            - No npm registry calls
+            - No update checking
+            - No telemetry
+            - Local parser files
+            
+            ### Source: https://github.com/${{ github.repository }}
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/**/*
+
+  docker-build:
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        run: |
+          # Build multi-architecture Docker image
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --tag ghcr.io/${{ github.repository_owner }}/opencode-offline:${{ env.OFFLINE_VERSION }} \
+            --tag ghcr.io/${{ github.repository_owner }}/opencode-offline:latest \
+            --push \
+            -f ./packages/containers/Dockerfile.offline \
+            .
+          
+          # Create docker-compose example
+          cat > docker-compose.offline.example.yml << 'EOF'
+          version: '3.8'
+          services:
+            opencode-offline:
+              image: ghcr.io/${{ github.repository_owner }}/opencode-offline:latest
+              container_name: opencode-offline
+              environment:
+                - OP_OFFLINE_MODE=true
+                - OP_DISABLE_EXTERNAL_CONNECTIONS=true
+                - OP_LOCAL_WASM_FILES=true
+                - OP_DISABLE_UPDATE_CHECKING=true
+                - OP_DISABLE_TELEMETRY=true
+                - OPENAI_API_BASE=http://your-llm-proxy:8080/v1
+                - ANTHROPIC_API_BASE=http://your-llm-proxy:8081/v1
+              volumes:
+                - ./projects:/workspace
+                - ./config:/config
+              ports:
+                - "3000:3000"
+              restart: unless-stopped
+          EOF
