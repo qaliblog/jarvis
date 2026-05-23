@@ -117,7 +117,7 @@ jobs:
           elif command -v brew &> /dev/null; then
             brew install zip
           fi
-          
+
       - name: Install packaging tools (Windows)
         if: runner.os == 'Windows'
         run: |
@@ -195,74 +195,64 @@ jobs:
             cp -r local-resources/* dist/$TARGET/jarvis-offline/
           fi
           
-          # Create entry point script
+          # Create entry point script (Windows vs Unix)
           if [ "${{ matrix.platform }}" = "win32" ]; then
-            cat > dist/$TARGET/jarvis-offline/opencode.cmd << 'EOF'
-@echo off
-set OP_OFFLINE_MODE=true
-set OP_DISABLE_EXTERNAL_CONNECTIONS=true
-set OP_LOCAL_WASM_FILES=true
-set OP_DISABLE_UPDATE_CHECKING=true
-set OP_DISABLE_TELEMETRY=true
-node "%~dp0\index.js" %*
-EOF
+            # Windows .cmd file - using printf to avoid YAML heredoc issues
+            printf '@echo off\n' > dist/$TARGET/jarvis-offline/opencode.cmd
+            printf 'set OP_OFFLINE_MODE=true\n' >> dist/$TARGET/jarvis-offline/opencode.cmd
+            printf 'set OP_DISABLE_EXTERNAL_CONNECTIONS=true\n' >> dist/$TARGET/jarvis-offline/opencode.cmd
+            printf 'set OP_LOCAL_WASM_FILES=true\n' >> dist/$TARGET/jarvis-offline/opencode.cmd
+            printf 'set OP_DISABLE_UPDATE_CHECKING=true\n' >> dist/$TARGET/jarvis-offline/opencode.cmd
+            printf 'set OP_DISABLE_TELEMETRY=true\n' >> dist/$TARGET/jarvis-offline/opencode.cmd
+            printf 'node "%%~dp0\\index.js" %%*\n' >> dist/$TARGET/jarvis-offline/opencode.cmd
+            
             # Create README for Windows
-            cat > dist/$TARGET/jarvis-offline/README.txt << 'EOF'
-Jarvis Offline - Windows
-
-Usage:
-1. Configure LLM endpoints in .env file:
-   OPENAI_API_BASE=http://your-local-proxy/v1
-   ANTHROPIC_API_BASE=http://your-local-proxy/v1
-   GROQ_API_BASE=http://your-local-proxy/v1
-   DEEPSEEK_API_BASE=http://your-local-proxy/v1
-
-2. Run: opencode.cmd
-
-Features:
-- Fully offline operation
-- No external network calls
-- Local parser files
-- Custom LLM endpoints
-EOF
+            printf 'Jarvis Offline - Windows\n\n' > dist/$TARGET/jarvis-offline/README.txt
+            printf 'Usage:\n' >> dist/$TARGET/jarvis-offline/README.txt
+            printf '1. Configure LLM endpoints in .env file:\n' >> dist/$TARGET/jarvis-offline/README.txt
+            printf '   OPENAI_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.txt
+            printf '   ANTHROPIC_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.txt
+            printf '   GROQ_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.txt
+            printf '   DEEPSEEK_API_BASE=http://your-local-proxy/v1\n\n' >> dist/$TARGET/jarvis-offline/README.txt
+            printf '2. Run: opencode.cmd\n\n' >> dist/$TARGET/jarvis-offline/README.txt
+            printf 'Features:\n' >> dist/$TARGET/jarvis-offline/README.txt
+            printf '- Fully offline operation\n' >> dist/$TARGET/jarvis-offline/README.txt
+            printf '- No external network calls\n' >> dist/$TARGET/jarvis-offline/README.txt
+            printf '- Local parser files\n' >> dist/$TARGET/jarvis-offline/README.txt
+            printf '- Custom LLM endpoints\n' >> dist/$TARGET/jarvis-offline/README.txt
+            
             # Create zip archive
             cd dist/$TARGET
             zip -r $BINARY_NAME.zip jarvis-offline/*
           else
-            cat > dist/$TARGET/jarvis-offline/opencode.sh << 'EOF'
-#!/bin/bash
-export OP_OFFLINE_MODE=true
-export OP_DISABLE_EXTERNAL_CONNECTIONS=true
-export OP_LOCAL_WASM_FILES=true
-export OP_DISABLE_UPDATE_CHECKING=true
-export OP_DISABLE_TELEMETRY=true
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-node "$DIR/index.js" "$@"
-EOF
+            # Unix shell script
+            printf '#!/bin/bash\n' > dist/$TARGET/jarvis-offline/opencode.sh
+            printf 'export OP_OFFLINE_MODE=true\n' >> dist/$TARGET/jarvis-offline/opencode.sh
+            printf 'export OP_DISABLE_EXTERNAL_CONNECTIONS=true\n' >> dist/$TARGET/jarvis-offline/opencode.sh
+            printf 'export OP_LOCAL_WASM_FILES=true\n' >> dist/$TARGET/jarvis-offline/opencode.sh
+            printf 'export OP_DISABLE_UPDATE_CHECKING=true\n' >> dist/$TARGET/jarvis-offline/opencode.sh
+            printf 'export OP_DISABLE_TELEMETRY=true\n' >> dist/$TARGET/jarvis-offline/opencode.sh
+            printf 'DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\n' >> dist/$TARGET/jarvis-offline/opencode.sh
+            printf 'node "$DIR/index.js" "$@"\n' >> dist/$TARGET/jarvis-offline/opencode.sh
             chmod +x dist/$TARGET/jarvis-offline/opencode.sh
             
             # Create README for Unix
-            cat > dist/$TARGET/jarvis-offline/README.md << 'EOF'
-# Jarvis Offline
-
-## Usage:
-1. Configure LLM endpoints in .env file:
-   ```
-   OPENAI_API_BASE=http://your-local-proxy/v1
-   ANTHROPIC_API_BASE=http://your-local-proxy/v1
-   GROQ_API_BASE=http://your-local-proxy/v1
-   DEEPSEEK_API_BASE=http://your-local-proxy/v1
-   ```
-
-2. Run: `./opencode.sh`
-
-## Features:
-- Fully offline operation
-- No external network calls
-- Local parser files
-- Custom LLM endpoints
-- No telemetry or update checking
-EOF
+            printf '# Jarvis Offline\n\n' > dist/$TARGET/jarvis-offline/README.md
+            printf '## Usage:\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '1. Configure LLM endpoints in .env file:\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '   ```\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '   OPENAI_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '   ANTHROPIC_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '   GROQ_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '   DEEPSEEK_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '   ```\n\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '2. Run: `./opencode.sh`\n\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '## Features:\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '- Fully offline operation\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '- No external network calls\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '- Local parser files\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '- Custom LLM endpoints\n' >> dist/$TARGET/jarvis-offline/README.md
+            printf '- No telemetry or update checking\n' >> dist/$TARGET/jarvis-offline/README.md
             
             # Create tar.gz archive for Unix (better compression)
             cd dist/$TARGET
@@ -333,77 +323,3 @@ EOF
             ### Usage:
             1. Extract the archive for your platform
             2. Configure LLM endpoints in `.env` file:
-               ```
-               OPENAI_API_BASE=http://your-local-proxy/v1
-               ANTHROPIC_API_BASE=http://your-local-proxy/v1
-               GROQ_API_BASE=http://your-local-proxy/v1
-               DEEPSEEK_API_BASE=http://your-local-proxy/v1
-               ```
-            3. Run: `./opencode.sh` (Linux/macOS) or `opencode.cmd` (Windows)
-            
-            ### Offline Mode Features:
-            - No GitHub API calls
-            - No npm registry calls
-            - No update checking
-            - No telemetry
-            - Local parser files
-            
-            ### Source: https://github.com/${{ github.repository }}
-          draft: false
-          prerelease: false
-          files: |
-            artifacts/**/*
-
-  docker-build:
-    needs: setup
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        run: |
-          # Build multi-architecture Docker image
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --tag ghcr.io/${{ github.repository_owner }}/jarvis-offline:${{ env.OFFLINE_VERSION }} \
-            --tag ghcr.io/${{ github.repository_owner }}/jarvis-offline:latest \
-            --push \
-            -f ./packages/containers/Dockerfile.offline \
-            .
-          
-          # Create docker-compose example
-          cat > docker-compose.offline.example.yml << 'EOF'
-          version: '3.8'
-          services:
-            jarvis-offline:
-              image: ghcr.io/${{ github.repository_owner }}/jarvis-offline:latest
-              container_name: jarvis-offline
-              environment:
-                - OP_OFFLINE_MODE=true
-                - OP_DISABLE_EXTERNAL_CONNECTIONS=true
-                - OP_LOCAL_WASM_FILES=true
-                - OP_DISABLE_UPDATE_CHECKING=true
-                - OP_DISABLE_TELEMETRY=true
-                - OPENAI_API_BASE=http://your-llm-proxy:8080/v1
-                - ANTHROPIC_API_BASE=http://your-llm-proxy:8081/v1
-              volumes:
-                - ./projects:/workspace
-                - ./config:/config
-              ports:
-                - "3000:3000"
-              restart: unless-stopped
-          EOF
