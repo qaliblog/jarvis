@@ -4,64 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v1.0.0-offline)'
+        description: 'Version tag (e.g., v1.15.7-offline)'
         required: true
-        default: 'v1.0.0-offline'
-      include_wasm:
-        description: 'Include tree-sitter WASM files'
-        required: true
-        type: boolean
-        default: true
-      include_kotlin_lsp:
-        description: 'Include Kotlin LSP'
-        required: true
-        type: boolean
-        default: true
+        default: 'v1.15.7-offline'
   push:
     tags:
       - 'v*-offline*'
-    branches:
-      - 'release/offline*'
 
 env:
-  REGISTRY: ghcr.io/${{ github.repository_owner }}
   OFFLINE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
-  BUILD_CACHE_KEY: ${{ github.run_id }}
 
 jobs:
-  setup:
-    runs-on: ubuntu-latest
-    outputs:
-      offline_resources_sha: ${{ steps.hash.outputs.hash }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Bun
-        uses: ./.github/actions/setup-bun
-
-      - name: Generate hash for offline resources
-        id: hash
-        run: |
-          find ./scripts -name "*.sh" -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1 > /tmp/offline_hash
-          echo "hash=$(cat /tmp/offline_hash)" >> $GITHUB_OUTPUT
-
-      - name: Setup offline mode
-        run: ./scripts/setup-offline-mode.sh
-
-      - name: Cache offline resources
-        id: cache-resources
-        uses: actions/cache@v4
-        with:
-          path: ./local-resources
-          key: offline-resources-${{ steps.hash.outputs.hash }}
-          restore-keys: |
-            offline-resources-
-
   build-matrix:
-    needs: setup
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -91,12 +45,12 @@ jobs:
             platform: win32
             arch: x64
             target: win32-x64
-            binary_name: jarvis-offline-windows-x64.exe
+            binary_name: jarvis-offline-windows-x64
           - os: windows-latest
             platform: win32
             arch: arm64
             target: win32-arm64
-            binary_name: jarvis-offline-windows-arm64.exe
+            binary_name: jarvis-offline-windows-arm64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -106,166 +60,40 @@ jobs:
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
 
-      - name: Install packaging tools
-        if: runner.os != 'Windows'
-        run: |
-          if command -v apt-get &> /dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y zip
-          elif command -v yum &> /dev/null; then
-            sudo yum install -y zip
-          elif command -v brew &> /dev/null; then
-            brew install zip
-          fi
-
-      - name: Install packaging tools (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          # Windows has built-in zip support via PowerShell
-          echo "Windows has built-in compression tools"
-
-      - name: Restore offline resources
-        uses: actions/cache/restore@v4
-        with:
-          path: ./local-resources
-          key: offline-resources-${{ needs.setup.outputs.offline_resources_sha }}
-
-      - name: Download offline resources if needed
-        if: ${{ github.event.inputs.include_wasm == 'true' && !env.ACT }}
-        run: |
-          if [ ! -d "./local-resources/parsers" ] || [ -z "$(ls -A ./local-resources/parsers)" ]; then
-            echo "Downloading offline resources..."
-            ./scripts/download-offline-resources.sh
-          else
-            echo "Offline resources already downloaded"
-          fi
-
-      - name: Apply offline patches
-        run: |
-          # Apply parser configuration for offline mode
-          if [ -f "./scripts/patch-parsers-offline.js" ]; then
-            bun run ./scripts/patch-parsers-offline.js
-          fi
-          
-          # Set offline mode environment
-          export OP_OFFLINE_MODE=true
-          export OP_DISABLE_EXTERNAL_CONNECTIONS=true
-          export OP_LOCAL_WASM_FILES=true
-
       - name: Install dependencies
         run: bun install
 
-      - name: Build OpenCode
+      - name: Build Jarvis
         env:
-          OP_OFFLINE_MODE: true
-          OP_DISABLE_EXTERNAL_CONNECTIONS: true
-          OP_LOCAL_WASM_FILES: true
-          OP_DISABLE_UPDATE_CHECKING: true
-          OP_DISABLE_TELEMETRY: true
-          TARGET_PLATFORM: ${{ matrix.platform }}
-          TARGET_ARCH: ${{ matrix.arch }}
+          OPENCODE_OFFLINE_MODE: true
         run: |
           echo "Building for ${{ matrix.target }}"
-          
-          # Type check
-          bun typecheck
-          
-          # Build the package
           cd packages/opencode
-          bun run build -- --target=${{ matrix.target }}
-          
-          # Create binary output directory
-          mkdir -p ../../dist/${{ matrix.target }}
+          bun run build --single
 
       - name: Package CLI binary
-        env:
-          BINARY_NAME: ${{ matrix.binary_name }}
-          TARGET: ${{ matrix.target }}
+        shell: bash
         run: |
-          echo "Packaging $BINARY_NAME for $TARGET"
+          mkdir -p dist-offline
+          cd packages/opencode/dist
+          # Find the built directory
+          OS_NAME="${{ matrix.platform }}"
+          if [ "$OS_NAME" = "win32" ]; then OS_NAME="windows"; fi
+          BUILT_DIR=$(ls -d jarvis-$OS_NAME-${{ matrix.arch }}*)
+          cp -r $BUILT_DIR/* ../../../dist-offline/
           
-          # Create distribution directory
-          mkdir -p dist/$TARGET/jarvis-offline
-          
-          # Copy built files
-          cp -r packages/opencode/dist/* dist/$TARGET/jarvis-offline/
-          
-          # Copy offline resources if enabled
-          if [ "${{ github.event.inputs.include_wasm }}" = "true" ]; then
-            cp -r local-resources/* dist/$TARGET/jarvis-offline/
-          fi
-          
-          # Create entry point script (Windows vs Unix)
+          cd ../../../
           if [ "${{ matrix.platform }}" = "win32" ]; then
-            # Windows .cmd file - using printf to avoid YAML heredoc issues
-            printf '@echo off\n' > dist/$TARGET/jarvis-offline/opencode.cmd
-            printf 'set OP_OFFLINE_MODE=true\n' >> dist/$TARGET/jarvis-offline/opencode.cmd
-            printf 'set OP_DISABLE_EXTERNAL_CONNECTIONS=true\n' >> dist/$TARGET/jarvis-offline/opencode.cmd
-            printf 'set OP_LOCAL_WASM_FILES=true\n' >> dist/$TARGET/jarvis-offline/opencode.cmd
-            printf 'set OP_DISABLE_UPDATE_CHECKING=true\n' >> dist/$TARGET/jarvis-offline/opencode.cmd
-            printf 'set OP_DISABLE_TELEMETRY=true\n' >> dist/$TARGET/jarvis-offline/opencode.cmd
-            printf 'node "%%~dp0\\index.js" %%*\n' >> dist/$TARGET/jarvis-offline/opencode.cmd
-            
-            # Create README for Windows
-            printf 'Jarvis Offline - Windows\n\n' > dist/$TARGET/jarvis-offline/README.txt
-            printf 'Usage:\n' >> dist/$TARGET/jarvis-offline/README.txt
-            printf '1. Configure LLM endpoints in .env file:\n' >> dist/$TARGET/jarvis-offline/README.txt
-            printf '   OPENAI_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.txt
-            printf '   ANTHROPIC_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.txt
-            printf '   GROQ_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.txt
-            printf '   DEEPSEEK_API_BASE=http://your-local-proxy/v1\n\n' >> dist/$TARGET/jarvis-offline/README.txt
-            printf '2. Run: opencode.cmd\n\n' >> dist/$TARGET/jarvis-offline/README.txt
-            printf 'Features:\n' >> dist/$TARGET/jarvis-offline/README.txt
-            printf '- Fully offline operation\n' >> dist/$TARGET/jarvis-offline/README.txt
-            printf '- No external network calls\n' >> dist/$TARGET/jarvis-offline/README.txt
-            printf '- Local parser files\n' >> dist/$TARGET/jarvis-offline/README.txt
-            printf '- Custom LLM endpoints\n' >> dist/$TARGET/jarvis-offline/README.txt
-            
-            # Create zip archive
-            cd dist/$TARGET
-            zip -r $BINARY_NAME.zip jarvis-offline/*
+            7z a ${{ matrix.binary_name }}.zip ./dist-offline/*
           else
-            # Unix shell script
-            printf '#!/bin/bash\n' > dist/$TARGET/jarvis-offline/opencode.sh
-            printf 'export OP_OFFLINE_MODE=true\n' >> dist/$TARGET/jarvis-offline/opencode.sh
-            printf 'export OP_DISABLE_EXTERNAL_CONNECTIONS=true\n' >> dist/$TARGET/jarvis-offline/opencode.sh
-            printf 'export OP_LOCAL_WASM_FILES=true\n' >> dist/$TARGET/jarvis-offline/opencode.sh
-            printf 'export OP_DISABLE_UPDATE_CHECKING=true\n' >> dist/$TARGET/jarvis-offline/opencode.sh
-            printf 'export OP_DISABLE_TELEMETRY=true\n' >> dist/$TARGET/jarvis-offline/opencode.sh
-            printf 'DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\n' >> dist/$TARGET/jarvis-offline/opencode.sh
-            printf 'node "$DIR/index.js" "$@"\n' >> dist/$TARGET/jarvis-offline/opencode.sh
-            chmod +x dist/$TARGET/jarvis-offline/opencode.sh
-            
-            # Create README for Unix
-            printf '# Jarvis Offline\n\n' > dist/$TARGET/jarvis-offline/README.md
-            printf '## Usage:\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '1. Configure LLM endpoints in .env file:\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '   ```\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '   OPENAI_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '   ANTHROPIC_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '   GROQ_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '   DEEPSEEK_API_BASE=http://your-local-proxy/v1\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '   ```\n\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '2. Run: `./opencode.sh`\n\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '## Features:\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '- Fully offline operation\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '- No external network calls\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '- Local parser files\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '- Custom LLM endpoints\n' >> dist/$TARGET/jarvis-offline/README.md
-            printf '- No telemetry or update checking\n' >> dist/$TARGET/jarvis-offline/README.md
-            
-            # Create tar.gz archive for Unix (better compression)
-            cd dist/$TARGET
-            tar -czf $BINARY_NAME.tar.gz jarvis-offline/*
+            tar -czf ${{ matrix.binary_name }}.tar.gz -C ./dist-offline .
           fi
-          
-          echo "Binary created: dist/$TARGET/$BINARY_NAME"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: jarvis-offline-${{ matrix.target }}
-          path: dist/${{ matrix.target }}/
+          name: ${{ matrix.binary_name }}
+          path: ${{ matrix.binary_name }}.*
           retention-days: 7
 
   create-release:
@@ -273,42 +101,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: jarvis-offline-*
           merge-multiple: true
-
-      - name: Create checksums
-        run: |
-          cd artifacts
-          # Find all binary files
-          find . -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.exe" \) | while read file; do
-            echo "Creating checksum for: $file"
-            sha256sum "$file" > "$file.sha256"
-          done
-          
-          # List all files
-          echo "Artifacts:"
-          find . -type f | sort
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.OFFLINE_VERSION }}
           name: Jarvis Offline ${{ env.OFFLINE_VERSION }}
+          files: artifacts/*
           body: |
             # Jarvis Offline Binaries
             
             ## Version: ${{ env.OFFLINE_VERSION }}
-            ## Build Date: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
             
             ### Features:
             - 🔒 Fully offline operation
             - 🚫 No external connections except configured API endpoints
-            - 📦 Includes tree-sitter WASM files
             - ⚡ CLI binaries for all platforms
             - 🛡️ Privacy-focused
             
@@ -319,7 +133,3 @@ jobs:
             - macOS ARM64
             - Windows x64
             - Windows ARM64
-            
-            ### Usage:
-            1. Extract the archive for your platform
-            2. Configure LLM endpoints in `.env` file:
