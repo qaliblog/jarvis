@@ -25,6 +25,11 @@ export const UpgradeCommand = {
     UI.println(UI.logo("  "))
     UI.empty()
     prompts.intro("Upgrade")
+
+    prompts.log.error("The upgrade command is disabled in offline mode.")
+    prompts.outro("Done")
+    return
+
     const detectedMethod = await Installation.method()
     const method = (args.method as Installation.Method) ?? detectedMethod
     if (method === "unknown") {
