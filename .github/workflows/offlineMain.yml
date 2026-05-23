@@ -57,12 +57,6 @@ jobs:
             target: win32-x64
             jarvis_target: jarvis-windows-x64
             binary_name: jarvis-offline-windows-x64
-          - os: windows-latest
-            platform: win32
-            arch: arm64
-            target: win32-arm64
-            jarvis_target: jarvis-windows-arm64
-            binary_name: jarvis-offline-windows-arm64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -139,4 +133,3 @@ jobs:
             - macOS x64
             - macOS ARM64
             - Windows x64
-            - Windows ARM64

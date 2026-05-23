@@ -127,10 +127,6 @@ const allTargets = [
   },
   {
     os: "win32",
-    arch: "arm64",
-  },
-  {
-    os: "win32",
     arch: "x64",
   },
   {
