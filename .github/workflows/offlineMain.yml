@@ -25,31 +25,43 @@ jobs:
             platform: linux
             arch: x64
             target: linux-x64
+            jarvis_target: jarvis-linux-x64
             binary_name: jarvis-offline-linux-x64
           - os: ubuntu-latest
             platform: linux
             arch: arm64
             target: linux-arm64
+            jarvis_target: jarvis-linux-arm64
             binary_name: jarvis-offline-linux-arm64
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            target: linux-arm64-musl
+            jarvis_target: jarvis-linux-arm64-musl
+            binary_name: jarvis-offline-linux-arm64-musl
           - os: macos-latest
             platform: darwin
             arch: x64
             target: darwin-x64
+            jarvis_target: jarvis-darwin-x64
             binary_name: jarvis-offline-macos-x64
           - os: macos-latest
             platform: darwin
             arch: arm64
             target: darwin-arm64
+            jarvis_target: jarvis-darwin-arm64
             binary_name: jarvis-offline-macos-arm64
           - os: windows-latest
             platform: win32
             arch: x64
             target: win32-x64
+            jarvis_target: jarvis-windows-x64
             binary_name: jarvis-offline-windows-x64
           - os: windows-latest
             platform: win32
             arch: arm64
             target: win32-arm64
+            jarvis_target: jarvis-windows-arm64
             binary_name: jarvis-offline-windows-arm64
     steps:
       - name: Checkout repository
@@ -67,22 +79,16 @@ jobs:
         env:
           OPENCODE_OFFLINE_MODE: true
         run: |
-          echo "Building for ${{ matrix.target }}"
+          echo "Building for ${{ matrix.jarvis_target }}"
           cd packages/opencode
-          bun run build --single
+          bun run build --target=${{ matrix.jarvis_target }}
 
       - name: Package CLI binary
         shell: bash
         run: |
           mkdir -p dist-offline
-          cd packages/opencode/dist
-          # Find the built directory
-          OS_NAME="${{ matrix.platform }}"
-          if [ "$OS_NAME" = "win32" ]; then OS_NAME="windows"; fi
-          BUILT_DIR=$(ls -d jarvis-$OS_NAME-${{ matrix.arch }}*)
-          cp -r $BUILT_DIR/* ../../../dist-offline/
+          cp -r packages/opencode/dist/${{ matrix.jarvis_target }}/* ./dist-offline/
           
-          cd ../../../
           if [ "${{ matrix.platform }}" = "win32" ]; then
             7z a ${{ matrix.binary_name }}.zip ./dist-offline/*
           else
@@ -129,6 +135,7 @@ jobs:
             ### Included Platforms:
             - Linux x64
             - Linux ARM64
+            - Linux ARM64 Musl
             - macOS x64
             - macOS ARM64
             - Windows x64
