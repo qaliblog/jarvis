@@ -71,32 +71,32 @@ jobs:
             platform: linux
             arch: x64
             target: linux-x64
-            binary_name: opencode-offline-linux-x64
+            binary_name: jarvis-offline-linux-x64
           - os: ubuntu-latest
             platform: linux
             arch: arm64
             target: linux-arm64
-            binary_name: opencode-offline-linux-arm64
+            binary_name: jarvis-offline-linux-arm64
           - os: macos-latest
             platform: darwin
             arch: x64
             target: darwin-x64
-            binary_name: opencode-offline-macos-x64
+            binary_name: jarvis-offline-macos-x64
           - os: macos-latest
             platform: darwin
             arch: arm64
             target: darwin-arm64
-            binary_name: opencode-offline-macos-arm64
+            binary_name: jarvis-offline-macos-arm64
           - os: windows-latest
             platform: win32
             arch: x64
             target: win32-x64
-            binary_name: opencode-offline-windows-x64.exe
+            binary_name: jarvis-offline-windows-x64.exe
           - os: windows-latest
             platform: win32
             arch: arm64
             target: win32-arm64
-            binary_name: opencode-offline-windows-arm64.exe
+            binary_name: jarvis-offline-windows-arm64.exe
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -185,19 +185,19 @@ jobs:
           echo "Packaging $BINARY_NAME for $TARGET"
           
           # Create distribution directory
-          mkdir -p dist/$TARGET/opencode-offline
+          mkdir -p dist/$TARGET/jarvis-offline
           
           # Copy built files
-          cp -r packages/opencode/dist/* dist/$TARGET/opencode-offline/
+          cp -r packages/opencode/dist/* dist/$TARGET/jarvis-offline/
           
           # Copy offline resources if enabled
           if [ "${{ github.event.inputs.include_wasm }}" = "true" ]; then
-            cp -r local-resources/* dist/$TARGET/opencode-offline/
+            cp -r local-resources/* dist/$TARGET/jarvis-offline/
           fi
           
           # Create entry point script
           if [ "${{ matrix.platform }}" = "win32" ]; then
-            cat > dist/$TARGET/opencode-offline/opencode.cmd << 'EOF'
+            cat > dist/$TARGET/jarvis-offline/opencode.cmd << 'EOF'
 @echo off
 set OP_OFFLINE_MODE=true
 set OP_DISABLE_EXTERNAL_CONNECTIONS=true
@@ -207,8 +207,8 @@ set OP_DISABLE_TELEMETRY=true
 node "%~dp0\index.js" %*
 EOF
             # Create README for Windows
-            cat > dist/$TARGET/opencode-offline/README.txt << 'EOF'
-OpenCode Offline - Windows
+            cat > dist/$TARGET/jarvis-offline/README.txt << 'EOF'
+Jarvis Offline - Windows
 
 Usage:
 1. Configure LLM endpoints in .env file:
@@ -227,9 +227,9 @@ Features:
 EOF
             # Create zip archive
             cd dist/$TARGET
-            zip -r $BINARY_NAME.zip opencode-offline/*
+            zip -r $BINARY_NAME.zip jarvis-offline/*
           else
-            cat > dist/$TARGET/opencode-offline/opencode.sh << 'EOF'
+            cat > dist/$TARGET/jarvis-offline/opencode.sh << 'EOF'
 #!/bin/bash
 export OP_OFFLINE_MODE=true
 export OP_DISABLE_EXTERNAL_CONNECTIONS=true
@@ -239,11 +239,11 @@ export OP_DISABLE_TELEMETRY=true
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 node "$DIR/index.js" "$@"
 EOF
-            chmod +x dist/$TARGET/opencode-offline/opencode.sh
+            chmod +x dist/$TARGET/jarvis-offline/opencode.sh
             
             # Create README for Unix
-            cat > dist/$TARGET/opencode-offline/README.md << 'EOF'
-# OpenCode Offline
+            cat > dist/$TARGET/jarvis-offline/README.md << 'EOF'
+# Jarvis Offline
 
 ## Usage:
 1. Configure LLM endpoints in .env file:
@@ -266,7 +266,7 @@ EOF
             
             # Create tar.gz archive for Unix (better compression)
             cd dist/$TARGET
-            tar -czf $BINARY_NAME.tar.gz opencode-offline/*
+            tar -czf $BINARY_NAME.tar.gz jarvis-offline/*
           fi
           
           echo "Binary created: dist/$TARGET/$BINARY_NAME"
@@ -274,7 +274,7 @@ EOF
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: opencode-offline-${{ matrix.target }}
+          name: jarvis-offline-${{ matrix.target }}
           path: dist/${{ matrix.target }}/
           retention-days: 7
 
@@ -288,7 +288,7 @@ EOF
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: opencode-offline-*
+          pattern: jarvis-offline-*
           merge-multiple: true
 
       - name: Create checksums
@@ -308,9 +308,9 @@ EOF
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.OFFLINE_VERSION }}
-          name: OpenCode Offline ${{ env.OFFLINE_VERSION }}
+          name: Jarvis Offline ${{ env.OFFLINE_VERSION }}
           body: |
-            # OpenCode Offline Binaries
+            # Jarvis Offline Binaries
             
             ## Version: ${{ env.OFFLINE_VERSION }}
             ## Build Date: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
@@ -379,8 +379,8 @@ EOF
           # Build multi-architecture Docker image
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
-            --tag ghcr.io/${{ github.repository_owner }}/opencode-offline:${{ env.OFFLINE_VERSION }} \
-            --tag ghcr.io/${{ github.repository_owner }}/opencode-offline:latest \
+            --tag ghcr.io/${{ github.repository_owner }}/jarvis-offline:${{ env.OFFLINE_VERSION }} \
+            --tag ghcr.io/${{ github.repository_owner }}/jarvis-offline:latest \
             --push \
             -f ./packages/containers/Dockerfile.offline \
             .
@@ -389,9 +389,9 @@ EOF
           cat > docker-compose.offline.example.yml << 'EOF'
           version: '3.8'
           services:
-            opencode-offline:
-              image: ghcr.io/${{ github.repository_owner }}/opencode-offline:latest
-              container_name: opencode-offline
+            jarvis-offline:
+              image: ghcr.io/${{ github.repository_owner }}/jarvis-offline:latest
+              container_name: jarvis-offline
               environment:
                 - OP_OFFLINE_MODE=true
                 - OP_DISABLE_EXTERNAL_CONNECTIONS=true
