@@ -1547,7 +1547,7 @@ export function Prompt(props: PromptProps) {
                   input.cursorColor = theme.text
                 }, 0)
               }}
-              onMouseDown={(r: MouseEvent) => r.target?.focus()}
+              onMouseUp={(r: MouseEvent) => r.target?.focus()}
               focusedBackgroundColor={theme.backgroundElement}
               cursorColor={props.disabled ? theme.backgroundElement : theme.text}
               syntaxStyle={syntax()}

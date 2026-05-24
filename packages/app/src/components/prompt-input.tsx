@@ -1447,7 +1447,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             />
             <div
               class="relative min-h-[52px]"
-              onMouseDown={(e) => {
+              onClick={(e) => {
                 const target = e.target
                 if (!(target instanceof HTMLElement)) return
                 if (target.closest('[data-action="prompt-attach"], [data-action="prompt-submit"]')) return
@@ -1597,7 +1597,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             />
             <div
               class="relative"
-              onMouseDown={(e) => {
+              onClick={(e) => {
                 const target = e.target
                 if (!(target instanceof HTMLElement)) return
                 if (target.closest('[data-action="prompt-attach"], [data-action="prompt-submit"]')) {
