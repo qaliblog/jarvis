@@ -608,7 +608,7 @@ export const RunCommand = effectCmd({
         return localAgent()
       }
 
-      async function execute(sdk: OpencodeClient) {
+      async function execute(sdk: OpencodeClient, fallback = false) {
         const sess = await session(sdk)
         if (!sess?.id) {
           UI.error("Session not found")
@@ -766,9 +766,9 @@ export const RunCommand = effectCmd({
 
         await share(client, sessionID)
 
-        if (!interactive) {
+        if (!interactive || fallback) {
           const events = await client.event.subscribe()
-          loop(client, events).catch((e) => {
+          void loop(client, events).catch((e) => {
             console.error(e)
             process.exit(1)
           })
@@ -785,6 +785,25 @@ export const RunCommand = effectCmd({
             if (result.error) {
               if (!emit("error", { error: result.error })) UI.error(formatRunError(result.error))
               process.exitCode = 1
+            }
+            return
+          }
+
+          if (interactive && fallback) {
+            while (true) {
+              const text = await UI.input(UI.Style.TEXT_INFO_BOLD + "?  " + UI.Style.TEXT_NORMAL)
+              if (text.toLowerCase() === "exit" || text.toLowerCase() === "quit") {
+                break
+              }
+              if (text.trim().length === 0) continue
+
+              await client.session.prompt({
+                sessionID,
+                agent,
+                model: pick(args.model),
+                variant: args.variant,
+                parts: [{ type: "text", text }],
+              })
             }
             return
           }
@@ -825,6 +844,14 @@ export const RunCommand = effectCmd({
             demo: args.demo,
           })
         } catch (error) {
+          if (error instanceof Error && error.message.includes("OpenTUI")) {
+            UI.println(UI.Style.TEXT_WARNING + "!" + UI.Style.TEXT_NORMAL + " " + error.message)
+            UI.println(UI.Style.TEXT_DIM + "Falling back to line-based interface..." + UI.Style.TEXT_NORMAL)
+            UI.empty()
+
+            await execute(sdk, true)
+            return
+          }
           dieInteractive(error)
         }
         return
@@ -858,7 +885,14 @@ export const RunCommand = effectCmd({
             demo: args.demo,
           })
         } catch (error) {
-          dieInteractive(error)
+          if (error instanceof Error && error.message.includes("OpenTUI")) {
+            UI.println(UI.Style.TEXT_WARNING + "!" + UI.Style.TEXT_NORMAL + " " + error.message)
+            UI.println(UI.Style.TEXT_DIM + "Falling back to line-based interface..." + UI.Style.TEXT_NORMAL)
+            UI.empty()
+            // Fall through to execute(sdk)
+          } else {
+            dieInteractive(error)
+          }
         }
       }
 
