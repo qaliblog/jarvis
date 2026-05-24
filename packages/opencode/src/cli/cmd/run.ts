@@ -125,7 +125,7 @@ async function toolError(part: ToolPart) {
 }
 
 export const RunCommand = effectCmd({
-  command: "run [message..]",
+  command: ["run [message..]", "$0 [message..]"],
   describe: "run opencode with a message",
   // --attach connects to a remote server (no local instance needed); the
   // default path runs an in-process server and needs the project instance.
@@ -231,7 +231,6 @@ export const RunCommand = effectCmd({
         alias: ["i"],
         type: "boolean",
         describe: "run in direct interactive split-footer mode",
-        default: false,
       })
       .option("dangerously-skip-permissions", {
         type: "boolean",
@@ -249,7 +248,9 @@ export const RunCommand = effectCmd({
     const localInstance = yield* InstanceRef
     yield* Effect.promise(async () => {
       const rawMessage = [...args.message, ...(args["--"] || [])].join(" ")
-      const thinking = args.interactive ? (args.thinking ?? true) : (args.thinking ?? false)
+      const interactive =
+        args.interactive ?? (rawMessage.length === 0 && !args.command && process.stdout.isTTY && !args.attach)
+      const thinking = interactive ? (args.thinking ?? true) : (args.thinking ?? false)
       const die = (message: string): never => {
         UI.error(message)
         process.exit(1)
@@ -266,23 +267,23 @@ export const RunCommand = effectCmd({
         .map((arg) => (arg.includes(" ") ? `"${arg.replace(/"/g, '\\"')}"` : arg))
         .join(" ")
 
-      if (args.interactive && args.command) {
+      if (interactive && args.command) {
         die("--interactive cannot be used with --command")
       }
 
-      if (args.demo && !args.interactive) {
+      if (args.demo && !interactive) {
         die("--demo requires --interactive")
       }
 
-      if (args.interactive && args.format === "json") {
+      if (interactive && args.format === "json") {
         die("--interactive cannot be used with --format json")
       }
 
-      if (args.replay && !args.interactive) {
+      if (args.replay && !interactive) {
         die("--replay requires --interactive")
       }
 
-      if (args["replay-limit"] !== undefined && !args.interactive) {
+      if (args["replay-limit"] !== undefined && !interactive) {
         die("--replay-limit requires --interactive")
       }
 
@@ -293,11 +294,11 @@ export const RunCommand = effectCmd({
         die("--replay-limit must be a positive integer")
       }
 
-      if (args.interactive && !process.stdout.isTTY) {
+      if (interactive && !process.stdout.isTTY) {
         die("--interactive requires a TTY stdout")
       }
 
-      if (args.interactive) {
+      if (interactive) {
         try {
           resolveInteractiveStdin().cleanup?.()
         } catch (error) {
@@ -357,7 +358,7 @@ export const RunCommand = effectCmd({
       message = resolveRunInput(message, piped) ?? ""
       const initialInput = resolveRunInput(rawMessage, piped)
 
-      if (message.trim().length === 0 && !args.command && !args.interactive) {
+      if (message.trim().length === 0 && !args.command && !interactive) {
         UI.error("You must provide a message or a command")
         process.exit(1)
       }
@@ -367,7 +368,7 @@ export const RunCommand = effectCmd({
         process.exit(1)
       }
 
-      const rules: Permission.Ruleset = args.interactive
+      const rules: Permission.Ruleset = interactive
         ? []
         : [
             {
@@ -765,7 +766,7 @@ export const RunCommand = effectCmd({
 
         await share(client, sessionID)
 
-        if (!args.interactive) {
+        if (!interactive) {
           const events = await client.event.subscribe()
           loop(client, events).catch((e) => {
             console.error(e)
@@ -829,7 +830,7 @@ export const RunCommand = effectCmd({
         return
       }
 
-      if (args.interactive && !args.attach && !args.session && !args.continue) {
+      if (interactive && !args.attach && !args.session && !args.continue) {
         const model = pick(args.model)
         const { runInteractiveLocalMode } = await runtimeTask
         const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
