@@ -337,9 +337,13 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/Co
 export const use = serviceUse(Service)
 
 function globalConfigFile() {
-  const candidates = ["opencode.jsonc", "opencode.json", "config.json"].map((file) =>
-    path.join(Global.Path.config, file),
-  )
+  const candidates = [
+    "jarvis.jsonc",
+    "jarvis.json",
+    "opencode.jsonc",
+    "opencode.json",
+    "config.json",
+  ].map((file) => path.join(Global.Path.config, file))
   for (const file of candidates) {
     if (existsSync(file)) return file
   }
@@ -452,9 +456,21 @@ export const layer = Layer.effect(
             .pipe(Effect.catch(() => Effect.void))
         }
       }
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "config.json"), env))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "opencode.json"), env))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "opencode.jsonc"), env))
+
+      const configDirs = [Global.Path.config]
+      const home = Global.Path.home
+      const legacyXdgConfig = path.join(home, ".config", "opencode")
+      if (legacyXdgConfig !== Global.Path.config && existsSync(legacyXdgConfig)) {
+        configDirs.push(legacyXdgConfig)
+      }
+
+      for (const dir of configDirs) {
+        result = mergeConfig(result, yield* loadFile(path.join(dir, "config.json"), env))
+        result = mergeConfig(result, yield* loadFile(path.join(dir, "opencode.json"), env))
+        result = mergeConfig(result, yield* loadFile(path.join(dir, "opencode.jsonc"), env))
+        result = mergeConfig(result, yield* loadFile(path.join(dir, "jarvis.json"), env))
+        result = mergeConfig(result, yield* loadFile(path.join(dir, "jarvis.jsonc"), env))
+      }
 
       const legacy = path.join(Global.Path.config, "config")
       if (existsSync(legacy)) {
@@ -600,8 +616,10 @@ export const layer = Layer.effect(
         }
 
         if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
-          for (const file of yield* ConfigPaths.files("opencode", ctx.directory, ctx.worktree).pipe(Effect.orDie)) {
-            yield* merge(file, yield* loadFile(file, authEnv), "local")
+          for (const name of ["opencode", "jarvis"]) {
+            for (const file of yield* ConfigPaths.files(name, ctx.directory, ctx.worktree).pipe(Effect.orDie)) {
+              yield* merge(file, yield* loadFile(file, authEnv), "local")
+            }
           }
         }
 
@@ -618,8 +636,8 @@ export const layer = Layer.effect(
         const deps: Fiber.Fiber<void>[] = []
 
         for (const dir of directories) {
-          if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
-            for (const file of ["opencode.json", "opencode.jsonc"]) {
+          if (dir.endsWith(".opencode") || dir.endsWith(".jarvis") || dir === Flag.OPENCODE_CONFIG_DIR) {
+            for (const file of ["jarvis.json", "jarvis.jsonc", "opencode.json", "opencode.jsonc"]) {
               const source = path.join(dir, file)
               log.debug(`loading config from ${source}`)
               yield* merge(source, yield* loadFile(source, authEnv))
