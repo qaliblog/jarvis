@@ -247,6 +247,11 @@ export async function createRuntimeLifecycle(input: LifecycleInput): Promise<Lif
         }
         process.on("SIGINT", sigint)
 
+        const resize = () => {
+          renderer.requestRender()
+        }
+        process.stdout.on("resize", resize)
+
         let closed = false
         const close = async (next: {
           showExit: boolean
@@ -267,6 +272,7 @@ export async function createRuntimeLifecycle(input: LifecycleInput): Promise<Lif
             },
             async () => {
               process.off("SIGINT", sigint)
+              process.stdout.off("resize", resize)
 
               try {
                 await footer.idle().catch(() => {})
