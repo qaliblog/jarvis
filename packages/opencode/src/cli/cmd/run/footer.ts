@@ -188,6 +188,8 @@ export class RunFooter implements FooterApi {
   private setState: Setter<FooterState>
   private view: Accessor<FooterView>
   private setView: Setter<FooterView>
+  private commits: Accessor<StreamCommit[]>
+  private setCommits: Setter<StreamCommit[]>
   private subagent: Accessor<FooterSubagentState>
   private setSubagent: (next: FooterSubagentState) => void
   private promptRoute: FooterPromptRoute = { type: "composer" }
@@ -219,6 +221,9 @@ export class RunFooter implements FooterApi {
     const [view, setView] = createSignal<FooterView>({ type: "prompt" })
     this.view = view
     this.setView = setView
+    const [commits, setCommits] = createSignal<StreamCommit[]>([])
+    this.commits = commits
+    this.setCommits = setCommits
     const [agents, setAgents] = createSignal(options.agents)
     this.agents = agents
     this.setAgents = setAgents
@@ -265,6 +270,7 @@ export class RunFooter implements FooterApi {
           directory: options.directory,
           state: this.state,
           view: this.view,
+          commits: this.commits,
           subagent: this.subagent,
           findFiles: options.findFiles,
           agents: this.agents,
@@ -469,6 +475,22 @@ export class RunFooter implements FooterApi {
     } else {
       this.queue.push(commit)
     }
+
+    this.setCommits((prev) => {
+      const last = prev.at(-1)
+      if (
+        last &&
+        last.phase === "progress" &&
+        commit.phase === "progress" &&
+        last.kind === commit.kind &&
+        last.source === commit.source &&
+        last.partID === commit.partID &&
+        last.tool === commit.tool
+      ) {
+        return [...prev.slice(0, -1), { ...last, text: last.text + commit.text }]
+      }
+      return [...prev, commit]
+    })
 
     if (this.pending) {
       return

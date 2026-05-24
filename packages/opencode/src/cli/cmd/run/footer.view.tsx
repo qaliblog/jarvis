@@ -11,8 +11,10 @@
 // The view itself is stateless except for derived memos.
 /** @jsxImportSource @opentui/solid */
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
-import { Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import "opentui-spinner/solid"
+import { entryBody } from "./entry.body"
+import { RunEntryContent } from "./scrollback.writer"
 import { createColors, createFrames } from "../tui/ui/spinner"
 import {
   RUN_SUBAGENT_PANEL_ROWS,
@@ -28,6 +30,7 @@ import { RunPermissionBody } from "./footer.permission"
 import { RunQuestionBody } from "./footer.question"
 import { printableBinding, promptBindings, promptHit, promptInfo } from "./prompt.shared"
 import type {
+  StreamCommit,
   FooterKeybinds,
   FooterPromptRoute,
   FooterState,
@@ -72,6 +75,7 @@ type RunFooterViewProps = {
   currentVariant: () => string | undefined
   state: () => FooterState
   view?: () => FooterView
+  commits?: () => StreamCommit[]
   subagent?: () => FooterSubagentState
   theme?: RunTheme
   diffStyle?: RunDiffStyle
@@ -97,6 +101,18 @@ type RunFooterViewProps = {
 }
 
 export { TEXTAREA_MIN_ROWS, TEXTAREA_MAX_ROWS } from "./footer.prompt"
+
+function StaticCommit(props: { commit: StreamCommit; theme: RunTheme }) {
+  const body = createMemo(() => entryBody(props.commit))
+
+  return (
+    <Show when={body().type !== "none"}>
+      <box paddingLeft={2} paddingRight={2} marginTop={1}>
+        <RunEntryContent commit={props.commit} body={body()} theme={props.theme} />
+      </box>
+    </Show>
+  )
+}
 
 export function RunFooterView(props: RunFooterViewProps) {
   const term = useTerminalDimensions()
@@ -162,6 +178,20 @@ export function RunFooterView(props: RunFooterViewProps) {
   const interruptKey = createMemo(() => interrupt() || "/exit")
   const runTheme = createMemo(() => props.theme ?? RUN_THEME_FALLBACK)
   const theme = createMemo(() => runTheme().footer)
+
+  const allMessages = createMemo(() => {
+    const history = (props.history ?? []).map(
+      (h) =>
+        ({
+          kind: "user" as const,
+          text: h.text,
+          phase: "final" as const,
+          source: "system" as const,
+        }) as StreamCommit,
+    )
+    const current = props.commits?.() ?? []
+    return [...history, ...current]
+  })
   const block = createMemo(() => runTheme().block)
   const spin = createMemo(() => {
     return {
@@ -361,6 +391,17 @@ export function RunFooterView(props: RunFooterViewProps) {
     })
   })
 
+  let scroll: any
+
+  createEffect(() => {
+    allMessages()
+    setTimeout(() => {
+      if (scroll && !scroll.isDestroyed) {
+        scroll.scrollTo(scroll.scrollHeight)
+      }
+    }, 10)
+  })
+
   return (
     <box
       id="run-direct-footer-shell"
@@ -372,6 +413,20 @@ export function RunFooterView(props: RunFooterViewProps) {
       gap={0}
       padding={0}
     >
+      <Show when={!panel() && !inspecting()}>
+        <scrollbox
+          ref={(r: any) => (scroll = r)}
+          width="100%"
+          flexGrow={1}
+          minHeight={0}
+          backgroundColor="transparent"
+          stickyScroll={true}
+          stickyStart="bottom"
+        >
+          <For each={allMessages()}>{(commit) => <StaticCommit commit={commit} theme={runTheme()} />}</For>
+        </scrollbox>
+      </Show>
+
       <box id="run-direct-footer-top-spacer" width="100%" height={1} flexShrink={0} backgroundColor="transparent" />
 
       <Show

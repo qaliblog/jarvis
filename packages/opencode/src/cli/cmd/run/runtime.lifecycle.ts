@@ -180,11 +180,11 @@ export async function createRuntimeLifecycle(input: LifecycleInput): Promise<Lif
           openConsoleOnError: false,
           exitOnCtrlC: false,
           useKittyKeyboard: { events: process.platform === "win32" },
-          screenMode: "split-footer",
+          screenMode: "alternate-screen",
           footerHeight: FOOTER_HEIGHT,
-          externalOutputMode: "capture-stdout",
+          externalOutputMode: "passthrough",
           consoleMode: "disabled",
-          clearOnShutdown: false,
+          clearOnShutdown: true,
         })
         const theme = await resolveRunTheme(renderer)
         renderer.setBackgroundColor(theme.background)
