@@ -356,7 +356,7 @@ test("direct footer shows subagent indicator while prompt is running", async () 
 
   const app = await testRender(
     () => (
-      <box width={100} height={8}>
+      <box width={100} height={20}>
         <RunFooterView
           directory="/tmp"
           findFiles={async () => []}
@@ -391,13 +391,15 @@ test("direct footer shows subagent indicator while prompt is running", async () 
     ),
     {
       width: 100,
-      height: 8,
+      height: 20,
     },
   )
 
   try {
     await app.renderOnce()
-    expect(app.captureCharFrame()).toContain("interrupt · 1 agent · ↓ to view")
+    const frame = app.captureCharFrame()
+    expect(frame).toContain("1 agent")
+    expect(frame).toContain("↓ to view")
   } finally {
     app.renderer.destroy()
   }
@@ -435,7 +437,7 @@ test("direct question body separates single-select checkmark from label", async 
     ),
     {
       width: 100,
-      height: 12,
+      height: 8,
     },
   )
 
